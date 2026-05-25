@@ -1,0 +1,38 @@
+"""agents/base.py — Base class all agents extend."""
+import os, time, anthropic
+from dotenv import load_dotenv
+load_dotenv()
+
+class BaseAgent:
+    system_prompt: str = ""
+
+    def __init__(self, retriever=None):
+        self.client    = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        self.model     = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+        self.retriever = retriever
+
+    def retrieve(self, query: str, collection: str = "statutes", k: int = 5) -> str:
+        if self.retriever is None:
+            return ""
+        return self.retriever.retrieve_as_string(query, collection=collection, k=k)
+
+    def _call_claude(self, user_message: str, max_tokens: int = 1500) -> str:
+        for attempt in range(3):
+            try:
+                r = self.client.messages.create(
+                    model=self.model, max_tokens=max_tokens,
+                    system=self.system_prompt,
+                    messages=[{"role": "user", "content": user_message}],
+                )
+                return r.content[0].text
+            except anthropic.RateLimitError:
+                wait = 2 ** attempt
+                print(f"[{self.__class__.__name__}] Rate limit — retrying in {wait}s")
+                time.sleep(wait)
+        raise RuntimeError(f"{self.__class__.__name__} failed after 3 attempts")
+
+    def build_user_message(self, query: str, context: dict) -> str:
+        raise NotImplementedError
+
+    def run(self, query: str, context: dict) -> str:
+        return self._call_claude(self.build_user_message(query, context))
