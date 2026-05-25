@@ -1,0 +1,39 @@
+"""
+scripts/setup_db.py
+────────────────────
+One-shot script to set up the ChromaDB vector database.
+Run this FIRST before starting the API server.
+
+Usage:
+    python scripts/setup_db.py
+    python scripts/setup_db.py --kanoon "unpaid wages" --max 20
+"""
+import sys, os, argparse
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from rag.vector_store import LegalVectorStore
+from data.ingest      import ingest_sample_data, ingest_from_kanoon
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--kanoon", type=str, default="", help="Indian Kanoon search query to also ingest")
+    parser.add_argument("--max",    type=int, default=10,  help="Max docs from Indian Kanoon")
+    parser.add_argument("--reset",  action="store_true",   help="Wipe and rebuild the database")
+    args = parser.parse_args()
+
+    store = LegalVectorStore()
+    if args.reset:
+        store.reset()
+        print("[Setup] Database wiped.")
+
+    print("\n[Setup] Ingesting bundled sample data…")
+    stats = ingest_sample_data(store)
+
+    if args.kanoon:
+        print(f"\n[Setup] Fetching from Indian Kanoon: '{args.kanoon}'…")
+        n = ingest_from_kanoon(store, query=args.kanoon, max_docs=args.max)
+        print(f"[Setup] Added {n} chunks from Indian Kanoon.")
+
+    final = store.stats()
+    print(f"\n✓ Database ready: {final['statutes']} statute chunks | {final['cases']} case chunks")
+    print("  You can now start the server: uvicorn main:app --reload --port 8000")
