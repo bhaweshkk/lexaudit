@@ -1,0 +1,171 @@
+"""
+data/ingest.py
+───────────────
+Ingestion pipeline: loads sample statutes + cases into ChromaDB.
+Also includes an Indian Kanoon API fetcher for expanding the database.
+
+Usage:
+    python -m data.ingest                    # ingest bundled sample data
+    python -m data.ingest --kanoon "unpaid wages" --max 10
+"""
+
+import os
+import sys
+import argparse
+import requests
+from tqdm import tqdm
+from dotenv import load_dotenv
+
+load_dotenv()
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from rag.vector_store import LegalVectorStore
+from rag.chunker import chunk_document
+from data.sample_statutes import STATUTES
+from data.sample_cases import CASES
+
+
+def ingest_sample_data(store: LegalVectorStore) -> dict:
+    """Ingest the bundled sample statutes and cases."""
+    print("\n── Ingesting sample statutes ────────────────────")
+    statute_docs = []
+    for s in tqdm(STATUTES, desc="Chunking statutes"):
+        statute_docs.extend(chunk_document(s))
+    added_s = store.add_documents(statute_docs, collection="statutes")
+
+    print("\n── Ingesting sample cases ───────────────────────")
+    case_docs = []
+    for c in tqdm(CASES, desc="Chunking cases"):
+        case_docs.extend(chunk_document(c))
+    added_c = store.add_documents(case_docs, collection="cases")
+
+    stats = store.stats()
+    print(f"\n✓ Database ready: {stats['statutes']} statute chunks, {stats['cases']} case chunks")
+    return stats
+
+
+def indiankanoon_fetch(
+    query: str,
+    api_key: str,
+    max_docs: int = 10,
+    doc_type: str = "judgments",
+) -> list:
+    """
+    Fetch documents from Indian Kanoon API.
+
+    Sign up for a free API key (500 calls/day) at:
+    https://api.indiankanoon.org/
+
+    Args:
+        query:    search query string
+        api_key:  your Indian Kanoon API key
+        max_docs: maximum number of documents to fetch
+        doc_type: "judgments" | "acts"
+
+    Returns:
+        List of document dicts ready for chunk_document()
+    """
+    base = "https://api.indiankanoon.org"
+    headers = {"Authorization": f"Token {api_key}"}
+
+    search_url = f"{base}/search/"
+    params = {"formInput": query, "pagenum": 0}
+
+    try:
+        r = requests.post(search_url, headers=headers, data=params, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        print(f"[Kanoon] Search failed: {e}")
+        return []
+
+    docs_out = []
+    results  = data.get("docs", [])[:max_docs]
+
+    for item in tqdm(results, desc=f"Fetching {len(results)} docs from Indian Kanoon"):
+        tid  = item.get("tid")
+        if not tid:
+            continue
+        try:
+            doc_r = requests.post(f"{base}/doc/{tid}/", headers=headers, timeout=30)
+            doc_r.raise_for_status()
+            d = doc_r.json()
+        except Exception as e:
+            print(f"[Kanoon] Doc {tid} fetch failed: {e}")
+            continue
+
+        title     = d.get("title", "Untitled")
+        doc_text  = d.get("doc", "")
+        court     = d.get("court", "Unknown court")
+        citation  = d.get("citation", "")
+        date      = d.get("date", "")
+
+        if not doc_text.strip():
+            continue
+
+        docs_out.append({
+            "id":       f"kanoon_{tid}",
+            "title":    title,
+            "text":     doc_text[:4000],
+            "court":    court,
+            "citation": citation or title,
+            "year":     date[:4] if date else "",
+            "status":   "good_law",
+            "tags":     query.lower().split()[:5],
+        })
+
+    print(f"[Kanoon] Fetched {len(docs_out)} documents.")
+    return docs_out
+
+
+def ingest_from_kanoon(
+    store: LegalVectorStore,
+    query: str,
+    max_docs: int = 10,
+    collection: str = "cases",
+) -> int:
+    """
+    Search Indian Kanoon and ingest results into the vector store.
+
+    Requires INDIANKANOON_API_KEY in your .env file.
+    """
+    api_key = os.getenv("INDIANKANOON_API_KEY", "")
+    if not api_key:
+        print("[Kanoon] No API key found. Set INDIANKANOON_API_KEY in .env")
+        print("         Sign up at https://api.indiankanoon.org/ (free, 500 calls/day)")
+        return 0
+
+    raw_docs = indiankanoon_fetch(query, api_key, max_docs=max_docs)
+    if not raw_docs:
+        return 0
+
+    all_chunks = []
+    for doc in raw_docs:
+        all_chunks.extend(chunk_document(doc))
+
+    return store.add_documents(all_chunks, collection=collection)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="LexAudit — ingest legal data into ChromaDB")
+    parser.add_argument("--kanoon", type=str, default="", help="Indian Kanoon search query")
+    parser.add_argument("--max",    type=int, default=10,  help="Max docs from Indian Kanoon")
+    parser.add_argument("--reset",  action="store_true",   help="Reset the database before ingesting")
+    args = parser.parse_args()
+
+    store = LegalVectorStore()
+
+    if args.reset:
+        store.reset()
+        print("[Ingest] Database reset.")
+
+    ingest_sample_data(store)
+
+    if args.kanoon:
+        print(f"\n── Fetching from Indian Kanoon: '{args.kanoon}' ─────")
+        n = ingest_from_kanoon(store, query=args.kanoon, max_docs=args.max)
+        print(f"[Kanoon] Ingested {n} new chunks.")
+
+    final = store.stats()
+    print(f"\n✓ Final DB: {final['statutes']} statute chunks | {final['cases']} case chunks")
