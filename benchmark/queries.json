@@ -1,0 +1,137 @@
+[
+  {
+    "id": "q01",
+    "query": "Can I sue my employer for unpaid wages after being terminated without notice?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Payment of Wages Act 1936 S.3", "Payment of Wages Act 1936 S.5", "Industrial Disputes Act 1947 S.25F"],
+    "expected_cases": ["Food Corporation of India v. Ramesh Kumar (1994) 2 SCC 414"],
+    "key_facts": ["one month notice mandatory", "15 days pay per year retrenchment compensation", "Labour Court jurisdiction"],
+    "difficulty": "medium"
+  },
+  {
+    "id": "q02",
+    "query": "Is a non-compete clause in my employment contract enforceable in India after I resign?",
+    "domain": "Contract Law",
+    "expected_statutes": ["Indian Contract Act 1872 S.27"],
+    "expected_cases": ["Niranjan Shankar Golikari v. Century Spinning AIR 1967 SC 1098"],
+    "key_facts": ["post-employment non-compete void", "section 27 Contract Act", "trade secrets may be protected"],
+    "difficulty": "medium"
+  },
+  {
+    "id": "q03",
+    "query": "My employer denied my maternity leave and threatened to terminate me. What are my rights?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Maternity Benefit Act 1961 S.5", "Maternity Benefit Act 1961 S.12", "Maternity Benefit Act 1961 S.21"],
+    "expected_cases": ["Air India v. Nargesh Meerza AIR 1981 SC 1829"],
+    "key_facts": ["26 weeks maternity leave", "dismissal during maternity unlawful", "criminal penalty for employer"],
+    "difficulty": "medium"
+  },
+  {
+    "id": "q04",
+    "query": "Can my employer deduct money from my salary without my consent for alleged damages?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Payment of Wages Act 1936 S.7"],
+    "expected_cases": ["Central Bank of India v. S. Satyam (1996) 5 SCC 419"],
+    "key_facts": ["section 7 exhaustive list of deductions", "unauthorised deductions void", "refund remedy available"],
+    "difficulty": "easy"
+  },
+  {
+    "id": "q05",
+    "query": "I worked for a company for 4 years and was retrenched. How much compensation am I entitled to?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Industrial Disputes Act 1947 S.25F", "Industrial Disputes Act 1947 S.2(oo)"],
+    "expected_cases": ["Guest Keen Williams v. P.J. Sterling AIR 1959 SC 1151"],
+    "key_facts": ["15 days average pay per completed year", "one month notice or pay in lieu", "continuous service 240 days"],
+    "difficulty": "easy"
+  },
+  {
+    "id": "q06",
+    "query": "I am a contract worker. Can I claim permanent employment from the principal employer?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Contract Labour (Regulation and Abolition) Act 1970 S.10", "Contract Labour Act S.21"],
+    "expected_cases": [],
+    "key_facts": ["abolition by government notification", "principal employer liability for wages", "registration requirement"],
+    "difficulty": "hard"
+  },
+  {
+    "id": "q07",
+    "query": "My employer is paying me below minimum wages. What can I do?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Minimum Wages Act 1948 S.3", "Minimum Wages Act 1948 S.20"],
+    "expected_cases": ["Randhir Singh v. Union of India AIR 1982 SC 879"],
+    "key_facts": ["minimum wages fixed by government", "claims authority", "10x compensation possible"],
+    "difficulty": "easy"
+  },
+  {
+    "id": "q08",
+    "query": "My employer dismissed me for misconduct without holding a domestic inquiry. Is this valid?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Industrial Disputes Act 1947 S.2(s)"],
+    "expected_cases": ["Bharat Forge v. Uttam Manohar Nakate (2005) 2 SCC 489", "Workmen of Firestone Tyre v. Management AIR 1973 SC 1227"],
+    "key_facts": ["natural justice mandatory", "domestic inquiry required", "termination without inquiry void"],
+    "difficulty": "medium"
+  },
+  {
+    "id": "q09",
+    "query": "I was illegally dismissed. Can I get full back wages along with reinstatement?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Industrial Disputes Act 1947"],
+    "expected_cases": ["Hindustan Tin Works v. Employees AIR 1979 SC 75", "Surendra Kumar Verma v. Central Govt. Tribunal (1980) 4 SCC 443"],
+    "key_facts": ["full back wages rule", "burden on employer to show gainful employment", "tribunal discretion"],
+    "difficulty": "medium"
+  },
+  {
+    "id": "q10",
+    "query": "I am a manager. Can I raise an industrial dispute for my termination?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Industrial Disputes Act 1947 S.2(s)"],
+    "expected_cases": ["Delhi Cloth and General Mills v. Shambhu Nath Mukherjee AIR 1978 SC 8"],
+    "key_facts": ["workman definition", "nature of duties test", "managerial exclusion"],
+    "difficulty": "hard"
+  },
+  {
+    "id": "q11",
+    "query": "My employer has 150 workers and wants to close down. Do they need government permission?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Industrial Disputes Act 1947 S.25N", "Industrial Disputes Act 1947 S.25O"],
+    "expected_cases": [],
+    "key_facts": ["100 or more workers require government permission", "90 days notice for closure", "prior permission mandatory"],
+    "difficulty": "medium"
+  },
+  {
+    "id": "q12",
+    "query": "Does the Code on Wages 2019 apply to me? My employer says it replaces the Payment of Wages Act.",
+    "domain": "Labour Law",
+    "expected_statutes": ["Code on Wages 2019", "Payment of Wages Act 1936"],
+    "expected_cases": [],
+    "key_facts": ["commencement not notified in most states", "Payment of Wages Act still in force", "employer claim is wrong"],
+    "difficulty": "hard"
+  },
+  {
+    "id": "q13",
+    "query": "I worked 220 days last year as a seasonal worker. Am I entitled to retrenchment compensation?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Industrial Disputes Act 1947 S.25B", "Industrial Disputes Act 1947 S.25F"],
+    "expected_cases": ["Guest Keen Williams v. P.J. Sterling AIR 1959 SC 1151"],
+    "key_facts": ["240 days required", "220 days insufficient", "not eligible for retrenchment compensation"],
+    "difficulty": "hard"
+  },
+  {
+    "id": "q14",
+    "query": "Can I get equal pay as a permanent employee if I am doing the same work as a contract worker?",
+    "domain": "Labour Law",
+    "expected_statutes": ["Constitution of India Article 14", "Constitution of India Article 39(d)"],
+    "expected_cases": ["Randhir Singh v. Union of India AIR 1982 SC 879"],
+    "key_facts": ["equal pay for equal work", "constitutional right", "writ jurisdiction"],
+    "difficulty": "hard"
+  },
+  {
+    "id": "q15",
+    "query": "My company wants me to sign a bond saying I will not join a competitor for 2 years after leaving. Should I sign?",
+    "domain": "Contract Law",
+    "expected_statutes": ["Indian Contract Act 1872 S.27"],
+    "expected_cases": ["Niranjan Shankar Golikari v. Century Spinning AIR 1967 SC 1098", "Percept D Mark v. Zaheer Khan AIR 2006 Bombay 390"],
+    "key_facts": ["post-employment bond void", "cannot be enforced in Indian courts", "confidential info clause may be valid"],
+    "difficulty": "medium"
+  }
+]
