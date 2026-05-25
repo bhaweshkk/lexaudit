@@ -1,0 +1,69 @@
+"""
+agents/caselaw_retrieval.py
+───────────────────────────
+Agent 3 — Case Law Retrieval
+
+Uses RAG to pull relevant judgment chunks from ChromaDB,
+then asks Claude to synthesise them into properly cited cases.
+"""
+
+from .base import BaseAgent
+
+
+class CaseLawRetrievalAgent(BaseAgent):
+
+    system_prompt = """You are an Indian case law retrieval expert with deep knowledge of Supreme Court and High Court judgments.
+
+You will receive:
+1. A legal query and query analysis
+2. Identified relevant statutes
+3. Judgment chunks retrieved from a legal database
+
+Retrieve 4–6 of the most relevant cases. For each case:
+
+**[Party v Party, (Year) Volume SCC/AIR PageNo]**
+- Court: Supreme Court of India / [State] High Court
+- Bench: (mention bench size only if constitutionally significant — e.g. Constitution Bench, 5-judge bench)
+- Holding: What the court decided — 1 to 2 sentences, focused on the ratio decidendi
+- Relevance to query: one sentence
+- Current status: ✅ Good law / ⚠️ Distinguished in [case] / ❌ Overruled by [case]
+
+Ordering rules:
+1. Supreme Court over High Courts
+2. Larger bench over smaller bench (if same issue)
+3. More recent over older (if same bench size)
+4. Constitution Bench decisions are binding on all courts
+
+If retrieved chunks contain actual judgment text, extract the ratio from it.
+If you are citing from training knowledge, note [From training knowledge] — never fabricate citations."""
+
+    def build_user_message(self, query: str, context: dict) -> str:
+        # Build a richer search query combining the original query + statute names
+        search_query = query
+        if context.get("statute_results"):
+            # Append the first 300 chars of statute results for better retrieval
+            search_query += " " + context["statute_results"][:300]
+
+        rag_context = self.retrieve(
+            query=search_query,
+            collection="cases",
+            k=int(__import__("os").getenv("TOP_K_CASES", 5)),
+        )
+
+        msg_parts = [f'Legal query: "{query}"']
+
+        if context.get("query_analysis"):
+            msg_parts.append(f"\nQuery analysis:\n{context['query_analysis']}")
+
+        if context.get("statute_results"):
+            msg_parts.append(f"\nRelevant statutes identified:\n{context['statute_results']}")
+
+        if rag_context:
+            msg_parts.append(f"\nRetrieved judgment chunks from database:\n{rag_context}")
+        else:
+            msg_parts.append(
+                "\nNote: No case database available — rely on training knowledge "
+                "and flag all citations as [From training knowledge]."
+            )
+
+        return "\n".join(msg_parts)
