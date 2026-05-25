@@ -1,0 +1,240 @@
+"""
+benchmark/evaluator.py
+───────────────────────
+Evaluation framework for LexAudit.
+
+Runs each query through TWO systems and compares:
+  1. Baseline  — plain single-call RAG chatbot (no agents, no fact-check)
+  2. LexAudit  — full 6-agent pipeline
+
+Metrics computed per query:
+  - citation_accuracy   : fraction of expected citations found in output
+  - hallucination_flag  : whether any ❌ Suspect citations appear
+  - fact_check_coverage : whether Labour Code commencement issue flagged
+  - amendment_awareness : whether pending/amended statutes flagged
+  - response_length     : character count of final output
+
+Outputs:
+  - benchmark_results.json   : raw per-query scores
+  - benchmark_summary.txt    : human-readable summary table
+
+Usage:
+  python -m benchmark.evaluator                  # run all 15 queries
+  python -m benchmark.evaluator --ids q01 q02    # run specific queries
+  python -m benchmark.evaluator --baseline-only  # only run baseline
+"""
+
+import os
+import sys
+import json
+import time
+import argparse
+import anthropic
+from datetime import datetime
+from typing import List, Dict
+from dotenv import load_dotenv
+
+load_dotenv()
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from agents.orchestrator import LegalOrchestrator
+from rag.retriever       import LegalRetriever
+from rag.vector_store    import LegalVectorStore
+
+
+BASELINE_SYSTEM = """You are a legal research assistant for Indian law.
+Answer the user's legal query. Retrieve relevant statutes and cases from
+your knowledge and provide a structured answer with citations.
+Be as helpful and complete as possible."""
+
+QUERIES_FILE = os.path.join(os.path.dirname(__file__), "queries.json")
+RESULTS_FILE = "benchmark_results.json"
+SUMMARY_FILE = "benchmark_summary.txt"
+
+
+def load_queries(ids: List[str] = None) -> List[Dict]:
+    with open(QUERIES_FILE) as f:
+        queries = json.load(f)
+    if ids:
+        queries = [q for q in queries if q["id"] in ids]
+    return queries
+
+
+def run_baseline(query: str, client: anthropic.Anthropic) -> Dict:
+    """Single-call RAG chatbot — no agents, no fact-check."""
+    t0 = time.time()
+    r  = client.messages.create(
+        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+        max_tokens=1500,
+        system=BASELINE_SYSTEM,
+        messages=[{"role": "user", "content": query}],
+    )
+    return {
+        "output":   r.content[0].text,
+        "elapsed":  round(time.time() - t0, 1),
+        "api_calls": 1,
+    }
+
+
+def score_output(output: str, expected: Dict) -> Dict:
+    """
+    Score an output against the ground truth.
+
+    Returns a dict of metric scores (all 0.0–1.0 except length).
+    """
+    output_lower = output.lower()
+
+    # 1. Citation accuracy: how many expected citations appear in output?
+    exp_statutes = expected.get("expected_statutes", [])
+    exp_cases    = expected.get("expected_cases", [])
+    all_expected = exp_statutes + exp_cases
+
+    found = sum(
+        1 for cite in all_expected
+        if any(part.lower() in output_lower for part in cite.split() if len(part) > 4)
+    )
+    citation_accuracy = round(found / max(len(all_expected), 1), 2)
+
+    # 2. Hallucination flag: does the output contain ❌ Suspect or wrong citations?
+    hallucination_flag = 1 if ("❌" in output and "suspect" in output_lower) else 0
+
+    # 3. Fact-check coverage: does output mention Labour Code commencement issue?
+    labour_code_keywords = ["pending commencement", "not yet operative", "still in force", "commencement not notified"]
+    fact_check_coverage  = 1 if any(kw in output_lower for kw in labour_code_keywords) else 0
+
+    # 4. Amendment awareness: does output flag amended/pending sections?
+    amendment_keywords   = ["amended", "pending", "🔄", "commencement", "not notified"]
+    amendment_awareness  = 1 if any(kw in output_lower for kw in amendment_keywords) else 0
+
+    # 5. Key facts coverage: how many key facts are mentioned?
+    key_facts = expected.get("key_facts", [])
+    facts_found = sum(
+        1 for fact in key_facts
+        if any(word.lower() in output_lower for word in fact.split() if len(word) > 4)
+    )
+    key_facts_score = round(facts_found / max(len(key_facts), 1), 2)
+
+    # 6. Output length (raw)
+    response_length = len(output)
+
+    return {
+        "citation_accuracy":   citation_accuracy,
+        "hallucination_flag":  hallucination_flag,
+        "fact_check_coverage": fact_check_coverage,
+        "amendment_awareness": amendment_awareness,
+        "key_facts_score":     key_facts_score,
+        "response_length":     response_length,
+    }
+
+
+def run_benchmark(
+    query_ids:     List[str] = None,
+    baseline_only: bool      = False,
+) -> List[Dict]:
+
+    queries      = load_queries(ids=query_ids)
+    client       = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    store        = LegalVectorStore()
+    retriever    = LegalRetriever(store=store)
+    orchestrator = LegalOrchestrator(retriever=retriever)
+
+    results = []
+
+    for q in queries:
+        print(f"\n{'='*60}")
+        print(f"Query {q['id']}: {q['query'][:60]}…")
+        print(f"Domain: {q['domain']} | Difficulty: {q['difficulty']}")
+
+        row = {"id": q["id"], "query": q["query"], "domain": q["domain"], "difficulty": q["difficulty"]}
+
+        # ── Baseline ────────────────────────────────────────────
+        print("  [Baseline] running…", end="", flush=True)
+        b = run_baseline(q["query"], client)
+        b_scores = score_output(b["output"], q)
+        row["baseline"] = {**b, "scores": b_scores}
+        print(f" done ({b['elapsed']}s) | citation_accuracy={b_scores['citation_accuracy']}")
+
+        # ── LexAudit ────────────────────────────────────────────
+        if not baseline_only:
+            print("  [LexAudit] running all 6 agents…")
+            la = orchestrator.run(q["query"], verbose=True)
+            full_output = f"{la.get('draft_memo','')}\n{la.get('citation_report','')}"
+            la_scores   = score_output(full_output, q)
+            total_elapsed = sum(la["timing"].values())
+            row["lexaudit"] = {
+                "output":    la.get("draft_memo", ""),
+                "citation_report": la.get("citation_report", ""),
+                "audit_trail":     la.get("audit_trail", []),
+                "elapsed":         round(total_elapsed, 1),
+                "api_calls":       7,
+                "scores":          la_scores,
+            }
+            print(f"  [LexAudit] done ({total_elapsed:.1f}s) | citation_accuracy={la_scores['citation_accuracy']}")
+
+            # Delta
+            delta_citation = round(la_scores["citation_accuracy"] - b_scores["citation_accuracy"], 2)
+            print(f"  [Delta] citation_accuracy: {'+' if delta_citation>=0 else ''}{delta_citation}")
+
+        results.append(row)
+        time.sleep(1)
+
+    # Save raw results
+    with open(RESULTS_FILE, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"\n✓ Results saved to {RESULTS_FILE}")
+
+    # Generate summary
+    _write_summary(results, baseline_only)
+    return results
+
+
+def _write_summary(results: List[Dict], baseline_only: bool):
+    lines = [
+        "LexAudit Benchmark Summary",
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"Queries evaluated: {len(results)}",
+        "=" * 70,
+        "",
+    ]
+
+    metrics = ["citation_accuracy", "fact_check_coverage", "amendment_awareness", "key_facts_score"]
+
+    if not baseline_only:
+        header = f"{'ID':<6} {'Domain':<16} {'Diff':<8} | {'Baseline':>10} | {'LexAudit':>10} | {'Delta':>8}"
+        lines.append(header)
+        lines.append("-" * 70)
+
+        b_totals  = {m: 0.0 for m in metrics}
+        la_totals = {m: 0.0 for m in metrics}
+
+        for r in results:
+            b_ca  = r["baseline"]["scores"]["citation_accuracy"]
+            la_ca = r.get("lexaudit", {}).get("scores", {}).get("citation_accuracy", 0)
+            delta = round(la_ca - b_ca, 2)
+            lines.append(
+                f"{r['id']:<6} {r['domain'][:15]:<16} {r['difficulty']:<8} | "
+                f"{b_ca:>10.2f} | {la_ca:>10.2f} | {'+' if delta>=0 else ''}{delta:>7.2f}"
+            )
+            for m in metrics:
+                b_totals[m]  += r["baseline"]["scores"].get(m, 0)
+                la_totals[m] += r.get("lexaudit", {}).get("scores", {}).get(m, 0)
+
+        n = len(results)
+        lines += ["", "=" * 70, "Averages across all queries:", ""]
+        for m in metrics:
+            b_avg  = round(b_totals[m] / n, 3)
+            la_avg = round(la_totals[m] / n, 3)
+            delta  = round(la_avg - b_avg, 3)
+            lines.append(f"  {m:<25} Baseline={b_avg:.3f}  LexAudit={la_avg:.3f}  Delta={'+' if delta>=0 else ''}{delta:.3f}")
+
+    with open(SUMMARY_FILE, "w") as f:
+        f.write("\n".join(lines))
+    print(f"✓ Summary saved to {SUMMARY_FILE}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="LexAudit Benchmark Evaluator")
+    parser.add_argument("--ids",           nargs="+", default=None, help="Query IDs to run (e.g. q01 q02)")
+    parser.add_argument("--baseline-only", action="store_true",     help="Only run the baseline system")
+    args = parser.parse_args()
+    run_benchmark(query_ids=args.ids, baseline_only=args.baseline_only)
