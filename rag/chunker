@@ -1,0 +1,75 @@
+"""
+rag/chunker.py
+───────────────
+Splits long legal texts into overlapping chunks for RAG ingestion.
+
+Legal texts are dense and section-heavy — a good chunking strategy:
+  1. Prefer splitting on section boundaries (S.3, S.4, etc.)
+  2. Fall back to sentence boundaries
+  3. Overlap chunks so cross-section reasoning works
+"""
+
+import re
+from typing import List, Dict, Any
+
+
+CHUNK_SIZE    = int(800)
+CHUNK_OVERLAP = int(100)
+
+
+def _split_by_section(text: str) -> List[str]:
+    """Split on common Indian legal section markers."""
+    pattern = r"(?=\bSection\s+\d+[A-Z]?\b|\bS\.\s*\d+[A-Z]?\b|\b\d+[A-Z]?\.\s+[A-Z])"
+    parts = re.split(pattern, text)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _fixed_window(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
+    """Fixed-size character window with overlap."""
+    chunks, start = [], 0
+    while start < len(text):
+        end = start + size
+        chunks.append(text[start:end].strip())
+        start += size - overlap
+    return [c for c in chunks if len(c) > 50]
+
+
+def chunk_document(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Chunk a single document dict into multiple RAG-ready dicts.
+
+    Input doc format (either statute or case):
+        id, title, text, act/court, sections/citation, status/year, tags
+
+    Returns list of chunk dicts ready for VectorStore.add_documents().
+    Each chunk carries the parent metadata for citation reconstruction.
+    """
+    text   = doc.get("text", "").strip()
+    doc_id = doc["id"]
+
+    section_chunks = _split_by_section(text)
+
+    final_chunks = []
+    for part in section_chunks:
+        if len(part) <= CHUNK_SIZE:
+            final_chunks.append(part)
+        else:
+            final_chunks.extend(_fixed_window(part))
+
+    metadata_base = {
+        "title":    doc.get("title", ""),
+        "act":      doc.get("act", doc.get("court", "")),
+        "sections": doc.get("sections", doc.get("citation", "")),
+        "status":   str(doc.get("status", doc.get("year", ""))),
+        "tags":     ",".join(doc.get("tags", [])),
+    }
+
+    results = []
+    for i, chunk in enumerate(final_chunks):
+        results.append({
+            "id":       f"{doc_id}_chunk_{i}",
+            "text":     f"[{doc.get('title','')}]\n\n{chunk}",
+            "metadata": {**metadata_base, "chunk_index": i, "parent_id": doc_id},
+        })
+
+    return results
