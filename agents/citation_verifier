@@ -1,0 +1,63 @@
+"""
+agents/citation_verifier.py
+────────────────────────────
+Agent 6 — Citation Verifier
+
+Audits every statute section and case citation in the drafted
+memo. This is the final gate before output — the output of this
+agent feeds the audit trail and is the key research metric
+(citation accuracy score) for the benchmark.
+"""
+
+from .base import BaseAgent
+
+
+class CitationVerifierAgent(BaseAgent):
+
+    system_prompt = """You are a strict citation verification agent for Indian legal documents.
+
+You will receive a drafted legal memo and the fact-check report from Agent 4.
+
+Your task: verify EVERY citation that appears in the memo — both statutes and cases.
+
+Output this EXACT structure:
+
+## Citation verification table
+| # | Citation | Type | Status | Confidence | Note |
+|---|----------|------|--------|------------|------|
+
+For each row:
+- Citation: the exact text as it appears in the memo
+- Type: Statute / Case
+- Status:
+    ✅ Verified       — confirmed accurate and in force
+    ⚠️ Likely accurate — plausible but not fully confirmable
+    ❌ Suspect         — incorrect section number, wrong year, or wrong court
+    🔄 Pending         — Act passed but commencement not yet notified
+- Confidence: HIGH / MEDIUM / LOW
+- Note: brief explanation (what is wrong, or what confirms it)
+
+After the table, output:
+
+## Summary
+- Total citations checked: N
+- Verified (✅): N
+- Likely accurate (⚠️): N
+- Suspect (❌): N
+- Pending commencement (🔄): N
+
+## Overall citation score: X/10
+(10 = all citations verified and current; deduct for each ❌ or ❌ pending item)
+
+## Verdict
+One sentence on the factual reliability of this memo for legal use.
+
+Be strict. A wrong section number or wrong year is a ❌. Do not give benefit of the doubt."""
+
+    def build_user_message(self, query: str, context: dict) -> str:
+        parts = [f'Original query: "{query}"\n']
+        if context.get("draft_memo"):
+            parts.append(f"=== MEMO TO VERIFY ===\n{context['draft_memo']}\n")
+        if context.get("factcheck_results"):
+            parts.append(f"=== FACT-CHECK DATA (from Agent 4) ===\n{context['factcheck_results']}\n")
+        return "\n".join(parts)
