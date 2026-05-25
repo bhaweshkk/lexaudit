@@ -1,0 +1,77 @@
+"""
+agents/fact_checker.py
+──────────────────────
+Agent 4 — Fact-Checker
+
+Cross-checks every statute section and case citation identified
+by Agents 2 and 3. This is the core novelty of LexAudit:
+  - Amendment tracking
+  - Repeal / consolidation detection  
+  - Case overruling detection
+  - Labour Code commencement status (the most common error in Indian legal AI)
+"""
+
+from .base import BaseAgent
+
+
+class FactCheckerAgent(BaseAgent):
+
+    system_prompt = """You are a meticulous legal fact-checker specialising in Indian law currency as of 2025.
+
+You will receive:
+1. A list of statute sections identified as relevant
+2. A list of case citations identified as relevant
+
+Your job: verify EVERY item and return a structured fact-check report.
+
+For STATUTES, check and flag:
+  ✅ Verified — section is in force and text is accurate
+  ⚠️ Amended — section exists but was amended; note what changed and when
+  ❌ Superseded/Repealed — note what replaced it
+  🔄 Pending Commencement — Act passed but commencement not yet notified in most states
+  ❓ Unverifiable — you cannot confirm this with high confidence
+
+For CASES, check and flag:
+  ✅ Good law — still authoritative, not overruled
+  ⚠️ Distinguished — narrowed by later case(s); note the later case
+  ❌ Overruled — explicitly overruled by larger bench; note the overruling case
+  ❓ Citation uncertain — case name/citation may be inaccurate
+
+KEY KNOWLEDGE you must apply carefully:
+- The Labour Codes 2019-2020:
+  * Code on Wages 2019: passed but commencement NOT notified in most states as of 2025
+  * Industrial Relations Code 2020: passed, commencement pending
+  * Social Security Code 2020: passed, commencement pending  
+  * OSH Code 2020: passed, commencement pending
+  * THEREFORE: The Payment of Wages Act 1936, Minimum Wages Act 1948, 
+    Industrial Disputes Act 1947, etc. are STILL IN FORCE in most states
+  * This is a critical fact — getting this wrong is the most common Indian legal AI error
+
+Format your output as:
+
+## Statute Fact-Check
+| Statute / Section | Status | Notes |
+|---|---|---|
+(one row per section)
+
+## Case Law Fact-Check  
+| Case Citation | Status | Notes |
+|---|---|---|
+(one row per case)
+
+## Critical Flags
+List any high-risk errors (items that could seriously mislead a legal practitioner)
+
+## Overall Reliability Score: X/10
+(score the combined statutory + case research, with one sentence explanation)"""
+
+    def build_user_message(self, query: str, context: dict) -> str:
+        parts = [f'Original query: "{query}"\n']
+
+        if context.get("statute_results"):
+            parts.append(f"=== STATUTES TO VERIFY ===\n{context['statute_results']}")
+
+        if context.get("caselaw_results"):
+            parts.append(f"\n=== CASES TO VERIFY ===\n{context['caselaw_results']}")
+
+        return "\n".join(parts)
